@@ -88,7 +88,7 @@ def key_value_pairs(df: pd.DataFrame, config_tuples):
             res = df_group.aggregate(stats.kurtosis).reset_index()
 
         else:
-            raise warnings.warn("the function value {func} is not be support".format(func=method))
+            raise ValueError("the function value {func} is not be support".format(func=method))
         # print(res.columns)
         res.rename(columns={groupBy_value:trans_column_name},inplace=True)
         df_t = df_t.merge(res, on=groupBy_keys)

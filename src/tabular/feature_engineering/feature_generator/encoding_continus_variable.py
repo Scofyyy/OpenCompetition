@@ -1,113 +1,74 @@
 import numpy as np
-from scipy import stats
-from sklearn import preprocessing
+import warnings
+from sklearn.preprocessing import MinMaxScaler, MaxAbsScaler, Normalizer, RobustScaler, PowerTransformer,StandardScaler
+from scipy.special import erfinv
+from scipy.stats import norm
 
 
-def encode_continuous_variable(df_list, names, method):
-    '''
-    
-    :param df_list: 
-    :param names: 
-    :param method: 
-    :return: 
-    '''
-    if names is None:
-        raise NameError('please input colnames that you want to transfromer.')
+class GaussRankScaler():
+    def __init__(self):
+        self.epsilon = 0.001
+        self.lower = -1 + self.epsilon
+        self.upper = 1 - self.epsilon
+        self.range = self.upper - self.lower
 
-    if method not in ('MinAbs', 'MinMax', 'Normalization', 'Iqr', 'box_cox', 'yeo_johnson','RankGuass', 'icdf'):
-        raise ValueError("please select methods in \
-            ['MinAbs', 'MinMax', 'Normalization', 'Iqr', 'box_cox', 'yeo_johnson','RankGuass', 'icdf']")
+    def fit_transform(self, X):
+        i = np.argsort(X, axis=0)
+        j = np.argsort(i, axis=0)
 
-    flag = column_or_1d(df_list, warn=False)
-    if flag:
+        j_range = len(j) - 1
+        self.divider = j_range / self.range
 
-        if method == 'MinMax':
-            return MinMax(df_list)
-        elif method == 'exp':
-            return MinAbs(df_list)
-        elif method == 'Normalization':
-            return Normalization(df_list)
-        elif method == 'Iqr':
-            return Iqr(df_list)
-        elif method == 'box_cox':
-            return box_cox(df_list)
-        elif method == 'yeo_Johnson':
-            return Yeo_Johnson(df_list)
-        elif method == 'RankGuass':
-            return RankGuass
-        elif method == 'icdf':
-            return icdf(df_list)
+        transformed = j / self.divider
+        transformed = transformed - self.upper
+        transformed = erfinv(transformed)
 
-    else:
-        for name in names:
-            if method == 'MinMax':
-                return MinMax(df_list[name])
-            elif method == 'exp':
-                return MinAbs(df_list[name])
-            elif method == 'Normalization':
-                return Normalization(df_list[name])
-            elif method == 'Iqr':
-                return Iqr(df_list[name])
-            elif method == 'box_cox':
-                return box_cox(df_list[name])
-            elif method == 'yeo_Johnson':
-                return Yeo_Johnson(df_list[name])
-            elif method == 'RankGuass':
-                return RankGuass(df_list[name])
-            elif method == 'icdf':
-                return icdf(df_list[name])
+        return transformed
 
 
-def column_or_1d(y, warn=False):
+def encode_continuous_variable(df, configgers):
     """
-    Ravel column or 1d numpy array, else raises an error
+    encoder of continuous variables ,and the method can be in ["MinMax","MinAbs","Normalize","Robust","BoxCox","Yeo-Johnson","RankGuass","icdf"]
     Parameters
     ----------
-    y : array-like
+    df: pd.DataFrame, the input dataframe.
+    configgers: list of namedtuple, the config setting of encoding continuous variables like namedtuple("config",["encode_col","method"])
 
     Returns
     -------
-    y : array
+    df_t: pd.DataFrame, the DataFrame after transform, the result columns after transform named like "{origin_column_name}_{method}"
     """
-    y = np.asarray(y)
-    shape = np.shape(y)
-    if len(shape) == 1:
-        return True
-    if len(shape) == 2 and shape[1] == 1:
-        return True
+    df_t = df
+    for configger in configgers:
+        encode_col = configger.encode_col
+        method = configger.method
 
-    return False
+        if method == "MinMax":
+            res = MinMaxScaler().fit_transform(df[[encode_col]])
 
+        elif method == "MinAbs":
+            res = MaxAbsScaler().fit_transform(df[[encode_col]])
 
-def MinMax(x):
-    Min, Max = np.min(x), np.max(x)
-    x = (x - Min) / (Max - Min)
-    return x
+        elif method == "Normalize":
+            res = Normalizer().fit_transform(df[[encode_col]])
 
-def MinAbs(y):
-    maxabsscaler_scaler = preprocessing.MaxAbsScaler() # 建立MaxAbsScaler对象
-    df_scale = maxabsscaler_scaler.fit_transform(y)
-    return df_scale
+        elif method == "Robust":
+            res = RobustScaler().fit_transform(df[[encode_col]])
 
-def Normalization(data):
-    mu = np.mean(data, axis=0)
-    sigma = np.std(data, axis=0)
-    return (data - mu) / sigma
+        elif method == "BoxCox":
+            res = PowerTransformer(method="box-cox").fit_transform(df[[encode_col]])
 
-def Iqr(y):
-    pass
+        elif method == "Yeo-Johnson":
+            res = PowerTransformer(method="yeo-johnson").fit_transform(df[[encode_col]])
 
-def box_cox(y):
-    y_scale, lambda_ = stats.boxcox(y)
-    return y_scale
+        elif method == "RankGuass":
+            res = GaussRankScaler().fit_transform(df[[encode_col]])
 
-def Yeo_Johnson(y):
-    y_normal, lmbda_ = stats.yeojohnson(y)
-    return y_normal
+        elif method == "ICDF":
+            res = norm.ppf(df[[encode_col]])
+        else:
+            raise ValueError("""The method value {func} is not be support. It must be in ["MinMax", "MinAbs", "Normalize", "Robust", "BoxCox", "Yeo-Johnson", "RankGuass", "ICDF"]""".format(func=method))
 
-def RankGuass(y):
-    pass
+        df_t.loc[:,"_".join([encode_col,method])] = res
 
-def icdf(x):
-    q = stats.norm.cdf(x)
-    return stats.norm.ppf(q)
+    return df_t
