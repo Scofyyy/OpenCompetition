@@ -1,95 +1,64 @@
-# coding = 'utf-8'
+import numpy as np
+from sklearn.utils import check_array
 from sklearn.preprocessing import KBinsDiscretizer
-from src.tabular.feature_engineering.utils import concat_df_list, retrun_df_list, \
-    get_continue_feature
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
 
 
-class dis_configure:
-    """
-    The config object of discretizer. It saves the parameters of discretizer and check their validity.
-
-    Parameters
-    ----------
-    method : {'uniform', 'quantile', 'kmeans'}, (default='quantile')
-        uniform
-            All bins in each feature have identical widths.
-        quantile
-            All bins in each feature have the same number of points.
-        kmeans
-            Values in each bin have the same nearest center of a 1D k-means
-            cluster.
-
-    n_bins : int, default=5
-    index_col : str, default='id'
-        the col of df_list's DataFrame index col
-    """
-
-    method = None
-    n_bins = None
-    index_col = None
-
-    def _check(self):
-        if self.method is None:
-            self.method = "quantile"
-        elif self.method not in ['uniform', 'quantile', 'kmeans']:
-            raise ValueError(
-                "the method value {} is Invalid! It must be in ['uniform', 'quantile', 'kmeans'], "
-                "default is 'quantile'".format(
-                    str(self.method)))
-
-        if self.n_bins is None:
-            self.n_bins = 5
-        elif not isinstance(self.n_bins, int):
-            raise ValueError(
-                "the n_bins value {} is Invalid! It must be Int value "
-                "default is 5".format(
-                    str(self.n_bins)))
-
-        if self.index_col is None:
-            self.index_col = "id"
-        elif not isinstance(self.index_col, str):
-            raise ValueError(
-                "the index_col value {} is Invalid! It must be str value "
-                "default is 'id'".format(
-                    str(self.index_col)))
-
-    def __init__(self, method, n_bins, index_col):
-        self.method = method
+class DecisionTreeDiscretizer():
+    def __init__(self, n_bins):
         self.n_bins = n_bins
-        self.index_col = index_col
-        self._check()
+
+    def fit_transform(self, X, y):
+        X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2)
+        clf = DecisionTreeClassifier(max_leaf_nodes=self.n_bins)
+        clf.fit(X_train, y_train)
+        pred = clf.predict(X)
+        return pred
 
 
-def discretizer(df_list, names, config):
+def discretizer(df, configgers):
     """
-    concat the df_list as one pd.DataFrame then using sklean.KBinsDiscretizer depart it,
-
     Parameters
     ----------
-    df_list: object
-        a collection of one or more pd.DataFrame. they must have one column named 'id' for indexing.
-    names : list
-        a list of the continuous variable column's name. If it's none,checking if all columns are continuous and
-        discrete the continuous variable columns.
- 
-    config : object
-        the object of parameters
+    df: pd.DataFrame, the input DataFrame.
+    configgers: list of namedtuple, the config setting of encoding continuous variables like namedtuple("config",["encode_col","method","n_bins"])
+        encode_col: list,the column names of the columns need discretize
+        method: str,must in ["isometric", "quantile", "KMeans", "trees"]
+            if method choose tree, the field "target_col" can't be None.
+        n_bins: int
+        target_col: str, the target col's name
+
+
 
     Returns
-    ----------
-    df_list_t : object
-        the df_list after trans ,still is the collection of pd.DataFrame
+    df_t: pd.DataFrame, the result DataFrame
+    -------
     """
+    df_t = df
+    for configger in configgers:
+        encode_col = configger.encode_col
+        method = configger.method
+        n_bins = configger.n_bins
+        if method == "isometric":
+            discretizer = KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="uniform")
+        elif method == "quantile":
+            discretizer = KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="quantile")
+        elif method == "KMeans":
+            discretizer = KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="kmeans")
+        elif method == "trees":
+            discretizer = DecisionTreeDiscretizer(n_bins=n_bins)
+        else:
+            raise ValueError(
+                """The method value {func} is not be support for discretizer. It must be in ["isometric", "quantile", "KMeans", "trees"]""".format(
+                    func=method))
 
-    data = concat_df_list(df_list, config.index_col)
+        if method == "trees":
+            target_col = configger.target_col
+            res = discretizer.fit_transform(X=df[encode_col], y=df[target_col])
+        else:
+            res = discretizer.fit_transform(X=df[encode_col])
 
-    if names is None:
-        names, _ = get_continue_feature(data)
+        df_t.loc[:,"_".join(encode_col+[method,"discretize"])] = res
 
-    for name in names:
-        kbdis = KBinsDiscretizer(n_bins=config.n_bins, encode="ordinal", strategy=config.method)
-        kbdis.fit(data[name])
-        data.loc[:, name + "_discred"] = kbdis.transform(data[name])
-
-    df_list_t = retrun_df_list(df_list, data, config)
-    return df_list_t
+    return df_t
