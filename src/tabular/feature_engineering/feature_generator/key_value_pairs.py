@@ -2,11 +2,13 @@
 from scipy import stats
 from collections import Iterable
 
-import pandas as pd
 import numpy as np
+import warnings
+
 
 def mode(x):
     return stats.mode(x)[0][0]
+
 
 def entropy(x):
     x_value_list = set([x[i] for i in range(x.shape[0])])
@@ -24,57 +26,71 @@ def to_list(obj):
         obj = [obj]
     return obj
 
-def key_value_pairs(df:pd.DataFrame, index_col, config_tuples):
+
+import pandas as pd
+
+
+def key_value_pairs(df: pd.DataFrame, config_tuples):
     """
-    do transform like df.groupby([A, B])[C, D].agg(func),
-    func can in mean, std, skew, kurtosis, entropy, min, max, median, frequency,size.
+    do transform like df.groupby([A, B])[C].agg(func),
+    func can in min, max, mean, mode, entropy, std, skew, kurt
 
     Parameters
     ----------
 
-    df : pd.DataFrame. It must have one column named 'id' for indexing.
-    index_col : str, the index column of df_list.
+    df : pd.DataFrame.
     config_tuples : list ,list of collections.namedtuple("nt",["groupBy_keys","groupBy_values","method"]) object
 
     Returns
     -------
-    df_t : object, the df_list after transform.
-        the column of transform result named like "A_B\tC_D\t method".
+    df : object, the df_list after transform.
+        the column of transform result named like "A_B C method".
         It sort by index column
 
     """
+    df_t = df
     for config_tuple in config_tuples:
         groupBy_keys = config_tuple.groupBy_keys
-        groupBy_values = config_tuple.groupBy_values
+        groupBy_value = config_tuple.groupBy_value
         method = config_tuple.method
-        trans_column_name =  "\t".join(["_".join(to_list(groupBy_keys)),"_".join(groupBy_values),method])
 
-        df_group = df[groupBy_values].groupby(groupBy_keys)
+        print(groupBy_keys)
+        print(groupBy_value)
+
+        trans_column_name = " ".join(["_".join(to_list(groupBy_keys)), groupBy_value, method])
+        df_group = df.groupby(groupBy_keys)[groupBy_value]
+
         if method == 'min':
-            df.loc[:, trans_column_name] = df_group.aggregate(np.min)
+            res = df_group.aggregate(np.min).reset_index()
 
         elif method == 'max':
-            df.loc[:, trans_column_name] = df_group.aggregate(np.max)
+            res = df_group.aggregate(np.max).reset_index()
 
         elif method == 'mean':
-            df.loc[:, trans_column_name] = df_group.aggregate(np.mean)
+            res = df_group.aggregate(np.mean).reset_index()
 
         elif method == 'median':
-            df.loc[:, trans_column_name] = df_group.aggregate(np.median)
+            res = df_group.aggregate(np.median).reset_index()
 
         elif method == 'mode':
-            df.loc[:, trans_column_name] = df_group.aggregate(mode)
+            res = df_group.aggregate(mode).reset_index()
 
         elif method == 'entropy':
-            df.loc[:, trans_column_name] = df_group.aggregate(entropy)
+            res = df_group.aggregate(entropy).reset_index()
 
         elif method == 'std':
-            df.loc[:, trans_column_name] = df_group.aggregate(np.std)
+            res = df_group.aggregate(np.std).reset_index()
 
         elif method == 'skew':
-            df.loc[:, trans_column_name] = df_group.aggregate(stats.skew)
+            res = df_group.aggregate(stats.skew).reset_index()
 
         elif method == 'kurt':
-            df.loc[:, trans_column_name] = df_group.aggregate(stats.kurtosis)
+            res = df_group.aggregate(stats.kurtosis).reset_index()
 
-    return  df.sort_values("index_col")
+        else:
+            raise warnings.warn("the function value {func} is not be support".format(func=method))
+        # print(res.columns)
+        res.rename(columns={groupBy_value:trans_column_name},inplace=True)
+        df_t = df_t.merge(res, on=groupBy_keys)
+
+    return df_t
