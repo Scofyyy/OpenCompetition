@@ -10,7 +10,7 @@ class DecisionTreeDiscretizer():
         self.n_bins = n_bins
 
     def fit_transform(self, X, y):
-        X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2)
+        X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2,shuffle=True)
         clf = DecisionTreeClassifier(max_leaf_nodes=self.n_bins)
         clf.fit(X_train, y_train)
         pred = clf.predict(X)
@@ -31,7 +31,7 @@ def discretizer(df, configgers):
 
 
     Returns
-    df_t: pd.DataFrame, the result DataFrame
+    df_t: pd.DataFrame, the result DataFrame, the new feature column named like ''
     -------
     """
     df_t = df
