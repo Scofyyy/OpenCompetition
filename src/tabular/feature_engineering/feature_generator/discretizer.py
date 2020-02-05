@@ -31,7 +31,7 @@ def discretizer(df, configgers):
 
 
     Returns
-    df_t: pd.DataFrame, the result DataFrame, the new feature column named like ''
+    df_t: pd.DataFrame, the result DataFrame, the new feature column named like '"_".join(encode_col + [method, "discretize"])'
     -------
     """
     df_t = df
