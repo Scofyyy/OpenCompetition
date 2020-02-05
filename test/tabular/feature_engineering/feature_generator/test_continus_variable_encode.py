@@ -6,7 +6,7 @@ from src.tabular.feature_engineering.feature_generator.encoding_continus_variabl
 
 class continus_variable_encode_tester(unittest.TestCase):
     def test_something(self):
-        configger = namedtuple('config', ['encode_col', 'method'])
+        configger = namedtuple('config', ['encode_col', 'n_components'])
         x = np.arange(-0.99, 1, 0.01)
         df = pd.DataFrame(x,columns=["t"])
         config = configger("t", "MinMax")

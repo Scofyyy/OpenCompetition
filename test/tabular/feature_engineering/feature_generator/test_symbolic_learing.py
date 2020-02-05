@@ -6,6 +6,7 @@ from src.tabular.feature_engineering.feature_generator.symbolic_learning import 
 
 class MyTestCase(unittest.TestCase):
     def test_something(self):
+        d = load_boston()
         df = pd.DataFrame(d.data, columns=d.feature_names)
         df.loc[:, "target"] = d.target
         gpconfiger = GPConfig(["CRIM", "ZN"], "target")
@@ -19,5 +20,4 @@ if __name__ == '__main__':
     unittest.main()
 
 
-d = load_boston()
 

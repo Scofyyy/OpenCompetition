@@ -1,39 +1,38 @@
-#lda降维二分类只能降维到一维
-
-import numpy as np
 import pandas as pd
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.model_selection import train_test_split
 
-def generateData():
+
+def LDA(df, configger):
     """
-    随机生成训练数据
+
+    Parameters
+    ----------
+    df: pd.DataFrame. the input DataFrame.
+    configger: collections.namedtuple. the configger object like  namedtuple("config",["reduce_col","target_col","n_components"])
+
+    Returns
+    -------
+    df_t: pd.DataFrame. The result columns named like 'LDA_component_(0,n_components)'
     """
-    np.random.seed(1001)
-    x = np.random.rand(100, 20)
-    data = pd.DataFrame(x)
-    colnames = ['x'+str(i) for i in range(1,len(x[0])+1)]
-    data.columns = colnames
-    return data
+    n_components = configger.n_components
+    reduce_col = configger.reduce_col
+    target_col = configger.target_col
 
-def generate_y():
-    np.random.seed(1001)
-    y = np.random.randint(0,2,(100,1))
-    return y
+    if reduce_col is None:
+        reduce_col = list(df.columns)
+        reduce_col.remove(target_col)
 
-def LDA():
+    lda = LinearDiscriminantAnalysis(n_components=n_components)
+    X = df[reduce_col]
+    y = df[target_col]
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, shuffle=True)
+    lda.fit(X_train, y_train)
 
-    lda = LinearDiscriminantAnalysis()
-    X,y = generateData(),generate_y()
-    lda.fit(X,y)
-    X_new = lda.transform(X)
-    return X_new
+    res = lda.transform(X=X)
+    names = ("LDA_component_" + str(i) for i in range(res.shape[1]))
 
-def featureGeneration():
-    lda = LDA()
-    compents = pd.DataFrame(lda)
-    compents.columns = ['new_x' + str(i) for i in range(1, 1 + 1)]
-    new_data = pd.concat([generateData(), compents], axis=1)
-    return new_data
+    res = pd.DataFrame(res, columns=names)
+    df_t = pd.concat([df, res], axis=1)
 
-if __name__ == '__main__':
-    print(featureGeneration())
+    return df_t
