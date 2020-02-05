@@ -16,7 +16,6 @@ class DecisionTreeDiscretizer():
         pred = clf.predict(X)
         return pred
 
-
 def discretizer(df, configgers):
     """
     Parameters
@@ -40,17 +39,24 @@ def discretizer(df, configgers):
         encode_col = configger.encode_col
         method = configger.method
         n_bins = configger.n_bins
+
         if method == "isometric":
             discretizer = KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="uniform")
+
         elif method == "quantile":
             discretizer = KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="quantile")
+
         elif method == "KMeans":
             discretizer = KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="kmeans")
+
         elif method == "trees":
             discretizer = DecisionTreeDiscretizer(n_bins=n_bins)
+
         else:
             raise ValueError(
-                """The method value {func} is not be support for discretizer. It must be in ["isometric", "quantile", "KMeans", "trees"]""".format(
+                """
+                The method value {func} is not be support for discretizer. 
+                It must be in ["isometric", "quantile", "KMeans", "trees"]""".format(
                     func=method))
 
         if method == "trees":
@@ -59,6 +65,6 @@ def discretizer(df, configgers):
         else:
             res = discretizer.fit_transform(X=df[encode_col])
 
-        df_t.loc[:,"_".join(encode_col+[method,"discretize"])] = res
+        df_t.loc[:, "_".join(encode_col + [method, "discretize"])] = res
 
     return df_t
