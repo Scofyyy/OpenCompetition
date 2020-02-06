@@ -1,5 +1,4 @@
 import numpy as np
-import warnings
 from sklearn.preprocessing import MinMaxScaler, MaxAbsScaler, Normalizer, RobustScaler, PowerTransformer
 from scipy.special import erfinv
 from scipy.stats import kstest, norm
@@ -13,7 +12,7 @@ def check_distribution(input_df):
         statistic, p_value = kstest(rvs=input_df, cdf=distribution_type)
         p_values[distribution_type] = p_value
 
-    if max(p_values.values())>= 0.05:
+    if max(p_values.values()) >= 0.05:
         return "others"
 
     else:
@@ -25,8 +24,9 @@ def check_distribution(input_df):
 
 
 class GaussRankScaler():
+
     def __init__(self):
-        self.epsilon = 0.001
+        self.epsilon = 1e-9
         self.lower = -1 + self.epsilon
         self.upper = 1 - self.epsilon
         self.range = self.upper - self.lower
@@ -36,9 +36,8 @@ class GaussRankScaler():
         j = np.argsort(i, axis=0)
 
         j_range = len(j) - 1
-        self.divider = j_range / self.range
 
-        transformed = j / self.divider
+        transformed = j / (j_range / self.range)
         transformed = transformed - self.upper
         transformed = erfinv(transformed)
 
@@ -47,11 +46,33 @@ class GaussRankScaler():
 
 def encode_continuous_variable(df, configgers):
     """
-    encoder of continuous variables ,and the method can be in ["MinMax","MinAbs","Normalize","Robust","BoxCox","Yeo-Johnson","RankGuass","icdf"]
+    encoder of continuous variables , the method can be in
+    ["MinMax","MinAbs","Normalize","Robust","BoxCox","Yeo-Johnson","RankGuass","icdf"]
+
     Parameters
     ----------
     df: pd.DataFrame, the input dataframe.
-    configgers: list of namedtuple, the config setting of encoding continuous variables like namedtuple("config",["encode_col","method"])
+    configgers: list of namedtuple, the config setting of encoding continuous
+        variables like namedtuple("config",["encode_col","method"]).
+            encode_col: str, the column name need encode.
+            method: str, the encode method you choose.
+        If you choose method is "MinMax", there are more Fields of config.
+            feature_range : tuple (min, max), default=(0, 1)
+                Desired range of transformed data.
+
+        If you choose method is "MinMax",  there are more Fields of config.
+            norm_method : 'l1', 'l2', or 'max', optional ('l2' by default)
+                The norm_method to use to normalize each non zero sample.
+
+        If you choose method is "Robust",  there are more Fields of config.
+            quantile_range : tuple (q_min, q_max), 0.0 < q_min < q_max < 100.0
+                Default: (25.0, 75.0) = (1st quantile, 3rd quantile) = IQR
+                Quantile range used to calculate ``scale_``.
+
+        If you choose method is "BoxCox" or "Yeo-Johnson", there are more Fields of config.
+            standardize : boolean, default=True
+                Set to True to apply zero-mean, unit-variance normalization to the
+                transformed output.
 
     Returns
     -------
@@ -66,39 +87,41 @@ def encode_continuous_variable(df, configgers):
 
         if distribution_type == "uniform":
             if method == "MinMax":
-                """
-                feature_range : tuple (min, max), default=(0, 1)
-                    Desired range of transformed data.
-                """
-                res = MinMaxScaler(feature_range=(0, 1)).fit_transform(df[[encode_col]])
+
+                try:
+                    feature_range = configger.feature_range
+                    assert feature_range is not None
+                except (AttributeError, AssertionError):
+                    feature_range = (0, 1)
+
+                res = MinMaxScaler(feature_range=feature_range).fit_transform(df[[encode_col]])
 
             elif method == "MinAbs":
                 res = MaxAbsScaler().fit_transform(df[[encode_col]])
 
             elif method == "Normalize":
-                """
-                norm : 'l1', 'l2', or 'max', optional ('l2' by default)
-                    The norm to use to normalize each non zero sample.
-                """
-                res = Normalizer(norm="l1").fit_transform(df[[encode_col]])
+
+                try:
+                    norm_method = configger.norm_method
+                    assert norm_method is not None
+                except (AttributeError, AssertionError):
+                    norm_method = "l2"
+
+                res = Normalizer(norm=norm_method).fit_transform(df[[encode_col]])
 
             elif method == "Robust":
-                """
-                with_centering : boolean, True by default
-                    If True, center the data before scaling.
-                    This will cause ``transform`` to raise an exception when attempted on
-                    sparse matrices, because centering them entails building a dense
-                    matrix which in common use cases is likely to be too large to fit in
-                    memory.
 
-                with_scaling : boolean, True by default
-                    If True, scale the data to interquartile range.
+                try:
+                    quantile = configger.quantile
+                    assert quantile is not None
+                    with_scaling = False
+                except (AttributeError, AssertionError):
+                    quantile = (25.0, 75.0)
+                    with_scaling = True
 
-                quantile_range : tuple (q_min, q_max), 0.0 < q_min < q_max < 100.0
-                    Default: (25.0, 75.0) = (1st quantile, 3rd quantile) = IQR
-                    Quantile range used to calculate ``scale_``.
-                """
-                res = RobustScaler(with_centering=True, with_scaling=True,quantile_range=(25.0, 75.0)).fit_transform(df[[encode_col]])
+                res = RobustScaler(with_centering=True, with_scaling=with_scaling,
+                                   quantile_range=quantile).fit_transform(
+                    df[[encode_col]])
 
             else:
                 raise ValueError(
@@ -107,11 +130,7 @@ def encode_continuous_variable(df, configgers):
 
         elif distribution_type == "norm":
             if method == "BoxCox":
-                """
-                standardize : boolean, default=True
-                    Set to True to apply zero-mean, unit-variance normalization to the
-                    transformed output.
-                """
+
                 res = PowerTransformer(method="box-cox", standardize=True).fit_transform(df[[encode_col]])
 
             elif method == "Yeo-Johnson":
@@ -119,6 +138,7 @@ def encode_continuous_variable(df, configgers):
 
             elif method == "RankGuass":
                 res = GaussRankScaler().fit_transform(df[[encode_col]])
+
             else:
                 raise ValueError(
                     """The column '{}' most likely a normal distribution. So, the method value must be in ["BoxCox", "Yeo-Johnson", "Normalize"]""".format(
@@ -127,6 +147,7 @@ def encode_continuous_variable(df, configgers):
         else:
             if method == "ICDF":
                 res = norm.ppf(df[[encode_col]])
+
             else:
                 raise ValueError(
                     """The column '{}' maybe is others distribution. So, the method value must be in ["BoxCox", "Yeo-Johnson", "Normalize"]""".format(
