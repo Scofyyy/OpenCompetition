@@ -7,18 +7,16 @@ from scipy.stats import kstest, norm
 def check_distribution(input_df):
     distribution_types = ["norm", "uniform"]
     p_values = {}
-
     for distribution_type in distribution_types:
         statistic, p_value = kstest(rvs=input_df, cdf=distribution_type)
         p_values[distribution_type] = p_value
 
-    if max(p_values.values()) >= 0.05:
+    if max(p_values.values()) < 0.05:
         return "others"
 
     else:
         if p_values["norm"] >= p_values["uniform"]:
             return "norm"
-
         else:
             return "uniform"
 
@@ -82,11 +80,10 @@ def encode_continuous_variable(df, configgers):
     for configger in configgers:
         encode_col = configger.encode_col
         method = configger.method
-        distribution_type = check_distribution(df[[encode_col]])
+        distribution_type = check_distribution(df[encode_col])
 
         if distribution_type == "uniform":
             if method == "MinMax":
-
                 try:
                     feature_range = configger.feature_range
                     assert feature_range is not None
