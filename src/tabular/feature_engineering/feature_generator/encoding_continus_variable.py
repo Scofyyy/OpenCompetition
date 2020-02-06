@@ -98,7 +98,7 @@ def encode_continuous_variable(df, configgers):
                     Default: (25.0, 75.0) = (1st quantile, 3rd quantile) = IQR
                     Quantile range used to calculate ``scale_``.
                 """
-                res = RobustScaler(with_centering=True, with_scaling=True).fit_transform(df[[encode_col]])
+                res = RobustScaler(with_centering=True, with_scaling=True,quantile_range=(25.0, 75.0)).fit_transform(df[[encode_col]])
 
             else:
                 raise ValueError(
