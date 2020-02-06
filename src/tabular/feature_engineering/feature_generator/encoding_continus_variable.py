@@ -1,18 +1,27 @@
 import numpy as np
 import warnings
-from sklearn.preprocessing import MinMaxScaler, MaxAbsScaler, Normalizer, RobustScaler, PowerTransformer, StandardScaler
+from sklearn.preprocessing import MinMaxScaler, MaxAbsScaler, Normalizer, RobustScaler, PowerTransformer
 from scipy.special import erfinv
 from scipy.stats import kstest, norm
 
 
 def check_distribution(input_df):
     distribution_types = ["norm", "uniform"]
-    for distribution_type in distribution_types:
-        statistic, p_value = kstest(input_df, distribution_type)
-        if p_value >= 0.05:
-            return distribution_type
+    p_values = {}
 
-    return "others"
+    for distribution_type in distribution_types:
+        statistic, p_value = kstest(rvs=input_df, cdf=distribution_type)
+        p_values[distribution_type] = p_value
+
+    if max(p_values.values())>= 0.05:
+        return "others"
+
+    else:
+        if p_values["norm"] >= p_values["uniform"]:
+            return "norm"
+
+        else:
+            return "uniform"
 
 
 class GaussRankScaler():
@@ -53,20 +62,43 @@ def encode_continuous_variable(df, configgers):
     for configger in configgers:
         encode_col = configger.encode_col
         method = configger.method
-
         distribution_type = check_distribution(df[[encode_col]])
+
         if distribution_type == "uniform":
             if method == "MinMax":
-                res = MinMaxScaler().fit_transform(df[[encode_col]])
+                """
+                feature_range : tuple (min, max), default=(0, 1)
+                    Desired range of transformed data.
+                """
+                res = MinMaxScaler(feature_range=(0, 1)).fit_transform(df[[encode_col]])
 
             elif method == "MinAbs":
                 res = MaxAbsScaler().fit_transform(df[[encode_col]])
 
             elif method == "Normalize":
-                res = Normalizer().fit_transform(df[[encode_col]])
+                """
+                norm : 'l1', 'l2', or 'max', optional ('l2' by default)
+                    The norm to use to normalize each non zero sample.
+                """
+                res = Normalizer(norm="l1").fit_transform(df[[encode_col]])
 
             elif method == "Robust":
-                res = RobustScaler().fit_transform(df[[encode_col]])
+                """
+                with_centering : boolean, True by default
+                    If True, center the data before scaling.
+                    This will cause ``transform`` to raise an exception when attempted on
+                    sparse matrices, because centering them entails building a dense
+                    matrix which in common use cases is likely to be too large to fit in
+                    memory.
+
+                with_scaling : boolean, True by default
+                    If True, scale the data to interquartile range.
+
+                quantile_range : tuple (q_min, q_max), 0.0 < q_min < q_max < 100.0
+                    Default: (25.0, 75.0) = (1st quantile, 3rd quantile) = IQR
+                    Quantile range used to calculate ``scale_``.
+                """
+                res = RobustScaler(with_centering=True, with_scaling=True).fit_transform(df[[encode_col]])
 
             else:
                 raise ValueError(
@@ -75,10 +107,15 @@ def encode_continuous_variable(df, configgers):
 
         elif distribution_type == "norm":
             if method == "BoxCox":
-                res = PowerTransformer(method="box-cox").fit_transform(df[[encode_col]])
+                """
+                standardize : boolean, default=True
+                    Set to True to apply zero-mean, unit-variance normalization to the
+                    transformed output.
+                """
+                res = PowerTransformer(method="box-cox", standardize=True).fit_transform(df[[encode_col]])
 
             elif method == "Yeo-Johnson":
-                res = PowerTransformer(method="yeo-johnson").fit_transform(df[[encode_col]])
+                res = PowerTransformer(method="yeo-johnson", standardize=True).fit_transform(df[[encode_col]])
 
             elif method == "RankGuass":
                 res = GaussRankScaler().fit_transform(df[[encode_col]])
