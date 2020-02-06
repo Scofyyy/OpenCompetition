@@ -67,7 +67,6 @@ def encode_continuous_variable(df, configgers):
         If you choose method is "Robust",  there are more Fields of config.
             quantile_range : tuple (q_min, q_max), 0.0 < q_min < q_max < 100.0
                 Default: (25.0, 75.0) = (1st quantile, 3rd quantile) = IQR
-                Quantile range used to calculate ``scale_``.
 
         If you choose method is "BoxCox" or "Yeo-Johnson", there are more Fields of config.
             standardize : boolean, default=True
