@@ -54,6 +54,7 @@ def encode_continuous_variable(df, configgers):
         variables like namedtuple("config",["encode_col","method"]).
             encode_col: str, the column name need encode.
             method: str, the encode method you choose.
+
         If you choose method is "MinMax", there are more Fields of config.
             feature_range : tuple (min, max), default=(0, 1)
                 Desired range of transformed data.
@@ -126,7 +127,6 @@ def encode_continuous_variable(df, configgers):
 
         elif distribution_type == "norm":
             if method == "BoxCox":
-
                 res = PowerTransformer(method="box-cox", standardize=True).fit_transform(df[[encode_col]])
 
             elif method == "Yeo-Johnson":
