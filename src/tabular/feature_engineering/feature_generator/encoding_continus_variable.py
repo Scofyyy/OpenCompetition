@@ -1,4 +1,5 @@
 import numpy as np
+import json
 from sklearn.preprocessing import MinMaxScaler, MaxAbsScaler, Normalizer, RobustScaler, PowerTransformer
 from scipy.special import erfinv
 from scipy.stats import kstest, norm
@@ -50,13 +51,11 @@ def encode_continuous_variable(df, configgers):
     Parameters
     ----------
     df: pd.DataFrame, the input dataframe.
-    configgers: list of namedtuple, the config setting of encoding continuous
-        variables like namedtuple("config",["encode_col","method"]).
-            encode_col: str, the column name need encode.
-            method: str, the encode method you choose.
+    configgers: str ,the config setting json str of encoding continuous variables
+        like {"${encode_col}":{"methods": "${method_value}" ,"arg_key of method":arg_value}}
 
         If you choose method is "MinMax", there are more Fields of config.
-            feature_range : tuple (min, max), default=(0, 1)
+            feature_range : tuple [min, max] default=[0, 1]
                 Desired range of transformed data.
 
         If you choose method is "MinMax",  there are more Fields of config.
@@ -64,11 +63,11 @@ def encode_continuous_variable(df, configgers):
                 The norm_method to use to normalize each non zero sample.
 
         If you choose method is "Robust",  there are more Fields of config.
-            quantile_range : tuple (q_min, q_max), 0.0 < q_min < q_max < 100.0
-                Default: (25.0, 75.0) = (1st quantile, 3rd quantile) = IQR
+            quantile_range : tuple [q_min, q_max], 0.0 < q_min < q_max < 100.0
+                Default: [25.0, 75.0] = (1st quantile, 3rd quantile) = IQR
 
         If you choose method is "BoxCox" or "Yeo-Johnson", there are more Fields of config.
-            standardize : boolean, default=True
+            standardize : int, default=1, will trans it to boolean
                 Set to True to apply zero-mean, unit-variance normalization to the
                 transformed output.
 
@@ -77,16 +76,16 @@ def encode_continuous_variable(df, configgers):
     df_t: pd.DataFrame, the DataFrame after transform, the result columns after transform named like "{origin_column_name}_{method}"
     """
     df_t = df
+    configgers = json.loads(configgers)
 
-    for configger in configgers:
-        encode_col = configger.encode_col
-        method = configger.method
+    for encode_col in configgers.keys:
+        method = configgers[encode_col]["method"]
         distribution_type = check_distribution(df[encode_col])
 
         if distribution_type == "uniform":
             if method == "MinMax":
                 try:
-                    feature_range = configger.feature_range
+                    feature_range = configgers[encode_col]["feature_range"]
                     assert feature_range is not None
                 except (AttributeError, AssertionError):
                     feature_range = (0, 1)
@@ -99,7 +98,7 @@ def encode_continuous_variable(df, configgers):
             elif method == "Normalize":
 
                 try:
-                    norm_method = configger.norm_method
+                    norm_method = configgers[encode_col]["norm_method"]
                     assert norm_method is not None
                 except (AttributeError, AssertionError):
                     norm_method = "l2"
@@ -109,7 +108,7 @@ def encode_continuous_variable(df, configgers):
             elif method == "Robust":
 
                 try:
-                    quantile = configger.quantile
+                    quantile = configgers[encode_col]["quantile"]
                     assert quantile is not None
                     with_scaling = False
                 except (AttributeError, AssertionError):
@@ -127,10 +126,24 @@ def encode_continuous_variable(df, configgers):
 
         elif distribution_type == "norm":
             if method == "BoxCox":
-                res = PowerTransformer(method="box-cox", standardize=True).fit_transform(df[[encode_col]])
+                try:
+                    standardize = configgers[encode_col]["standardize"]
+                    assert standardize is not None
+                    standardize = bool(int(standardize))
+                except (AttributeError, AssertionError):
+                    standardize = True
+
+                res = PowerTransformer(method="box-cox", standardize=standardize).fit_transform(df[[encode_col]])
 
             elif method == "Yeo-Johnson":
-                res = PowerTransformer(method="yeo-johnson", standardize=True).fit_transform(df[[encode_col]])
+                try:
+                    standardize = configgers[encode_col]["standardize"]
+                    assert standardize is not None
+                    standardize = bool(int(standardize))
+                except (AttributeError, AssertionError):
+                    standardize = True
+
+                res = PowerTransformer(method="yeo-johnson", standardize=standardize).fit_transform(df[[encode_col]])
 
             elif method == "RankGuass":
                 res = GaussRankScaler().fit_transform(df[[encode_col]])
@@ -142,8 +155,9 @@ def encode_continuous_variable(df, configgers):
 
         else:
             if method == "ICDF":
-                res = norm.ppf(df[[encode_col]])
+                #TODO add ICDF
 
+                pass
             else:
                 raise ValueError(
                     """The column '{}' maybe is others distribution. So, the method value must be in ["BoxCox", "Yeo-Johnson", "Normalize"]""".format(
