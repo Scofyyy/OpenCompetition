@@ -113,7 +113,7 @@ def tsne_reduce(df, configger):
 
     Returns
     -------
-    df_t
+    df_t: the result dataFrame. the new feature named like "tsne_component_${n}"
 
     """
     n_components = configger.n_components

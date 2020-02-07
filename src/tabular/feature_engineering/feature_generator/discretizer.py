@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.utils import check_array
+import json
 from sklearn.preprocessing import KBinsDiscretizer
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
@@ -28,17 +28,16 @@ def discretizer(df, configgers):
         n_bins: int
         target_col: str, the target col's name
 
-
-
     Returns
     df_t: pd.DataFrame, the result DataFrame, the new feature column named like '"_".join(encode_col + [method, "discretize"])'
     -------
     """
     df_t = df
-    for configger in configgers:
-        encode_col = configger.encode_col
-        method = configger.method
-        n_bins = configger.n_bins
+    configgers = json.loads(configgers)
+
+    for encode_col in configgers.keys:
+        method = configgers[encode_col]["method"]
+        n_bins = configgers[encode_col]["n_bins"]
 
         if method == "isometric":
             discretizer = KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="uniform")
@@ -60,7 +59,7 @@ def discretizer(df, configgers):
                     func=method))
 
         if method == "trees":
-            target_col = configger.target_col
+            target_col = configgers[encode_col]["target_col"]
             res = discretizer.fit_transform(X=df[encode_col], y=df[target_col])
         else:
             res = discretizer.fit_transform(X=df[encode_col])

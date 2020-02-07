@@ -156,7 +156,6 @@ def encode_continuous_variable(df, configgers):
         else:
             if method == "ICDF":
                 #TODO add ICDF
-
                 pass
             else:
                 raise ValueError(

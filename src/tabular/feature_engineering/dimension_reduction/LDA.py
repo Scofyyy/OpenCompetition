@@ -5,7 +5,6 @@ from sklearn.model_selection import train_test_split
 
 def lda_reduce(df, configger):
     """
-
     Parameters
     ----------
     df: pd.DataFrame. the input DataFrame.
@@ -50,7 +49,7 @@ def lda_reduce(df, configger):
 
     Returns
     -------
-    df_t: pd.DataFrame. The result columns named like 'LDA_component_(0,n_components)'
+    df_t: pd.DataFrame. The result columns named like 'LDA_component_${n}'
     """
     reduce_col = configger.reduce_col
     target_col = configger.target_col
