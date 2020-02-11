@@ -1,161 +1,154 @@
 import numpy as np
 import pandas as pd
-from torch.utils.data import Dataset
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import json
+import pickle
+
+from keras.models import Model as KerasModel
+from keras.layers import Input, Reshape, Concatenate, Dense, Dropout
+from keras.layers.embeddings import Embedding
+from keras.callbacks import ModelCheckpoint
+from sklearn.model_selection import train_test_split
 
 
-class TabularDataset(Dataset):
-    def __init__(self, data, cat_cols=None, output_col=None):
-        """
-        Characterizes a Dataset for PyTorch
+class NN_with_EntityEmbedding():
 
-        Parameters
-        ----------
+    def __init__(self, X, y, configger):
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, shuffle=True)
+        self.configger = configger
+        self.checkpointer = ModelCheckpoint(filepath=configger["check_point_file_path"], verbose=1)
+        self.__build_keras_model(X)
+        self.fit(X_train, y_train, X_val, y_val)
 
-        data: pandas data frame
-          The data frame object for the input data. It must
-          contain all the continuous, categorical and the
-          output columns to be used.
+    def preprocessing(self, X):
+        X_list = []
+        for i, column in enumerate(X.columns):
+            X_list.append(X[column].fillna(0).values)
 
-        cat_cols: List of strings
-          The names of the categorical columns in the data.
-          These columns will be passed through the embedding
-          layers in the model. These columns must be
-          label encoded beforehand. 
+        return X_list
 
-        output_col: string
-          The name of the output variable column in the data
-          provided.
-        """
+    def __build_keras_model(self, X):
+        input_model = []
+        output_model = []
 
-        self.n = data.shape[0]
+        for embed_col in self.configger["embed_cols"].keys():
+            input_dim = len(np.unique(X[embed_col]))
+            output_dim = self.configger["embed_cols"][embed_col]["output_dim"]
 
-        if output_col:
-            self.y = data[output_col].astype(np.float32).values.reshape(-1, 1)
-        else:
-            self.y = np.zeros((self.n, 1))
+            input_numeric = Input(shape=(1,))
+            embedding = Embedding(input_dim, output_dim, input_length=1,
+                                  name="{col_name}_embedding".format(col_name=embed_col))(input_numeric)
+            embedding = Reshape(target_shape=(output_dim,))(embedding)
+            input_model.append(input_numeric)
+            output_model.append(embedding)
 
-        self.cat_cols = cat_cols if cat_cols else []
-        self.cont_cols = [col for col in data.columns
-                          if col not in self.cat_cols + [output_col]]
+        x = Concatenate()(output_model)
+        x = Dense(32, activation='relu')(x)
+        x = Dropout(.35)(x)
+        x = Dense(16, activation='relu')(x)
+        x = Dropout(.15)(x)
+        x = Dense(8, activation='relu')(x)
+        x = Dropout(.15)(x)
+        output_model = Dense(1, activation='sigmoid')(x)
 
-        if self.cont_cols:
-            self.cont_X = data[self.cont_cols].astype(np.float32).values
-        else:
-            self.cont_X = np.zeros((self.n, 1))
+        self.model = KerasModel(inputs=input_model, outputs=output_model)
+        self.model.compile(loss=self.configger["loss_func"], optimizer=self.configger["optimizer"])
 
-        if self.cat_cols:
-            self.cat_X = data[cat_cols].astype(np.int64).values
-        else:
-            self.cat_X = np.zeros((self.n, 1))
+    def fit(self, X_train, y_train, X_val, y_val):
+        epochs = self.configger["epochs"]
+        batch_size = self.configger["batch_size"]
+        X_train = self.preprocessing(X_train)
+        self.model.fit(X_train, y_train.values, epochs=epochs, batch_size=batch_size
+                       # callbacks=[self.checkpointer]
+                       )
 
-    def __len__(self):
-        """
-        Denotes the total number of samples.
-        """
-        return self.n
+    def save_embeddings(self, saved_embeddings_fname):
+        embeddings = {}
+        for embed_col in self.configger["embed_cols"].keys():
+            layer_name = "{col_name}_embedding".format(col_name=embed_col)
+            embeddings[layer_name] = self.model.get_layer(name=layer_name).get_weights()[0]
 
-    def __getitem__(self, idx):
-        """
-        Generates one sample of data.
-        """
-        return [self.y[idx], self.cont_X[idx], self.cat_X[idx]]
+        with open(saved_embeddings_fname, 'wb') as f:
+            pickle.dump(embeddings, f, -1)
 
 
-class FeedForwardNN(nn.Module):
-    def __init__(self, emb_dims, no_of_cont, lin_layer_sizes,
-                 output_size, emb_dropout, lin_layer_dropouts):
+def embedding_data(X, embeddings):
+    """
 
-        """
-        Parameters
-        ----------
+    Parameters
+    ----------
+    X: pd.DataFrame. the original features of data.
+    embeddings: str or dict. the file path of embedding file or embeddings dict object.
 
-        emb_dims: List of two element tuples
-          This list will contain a two element tuple for each
-          categorical feature. The first element of a tuple will
-          denote the number of unique values of the categorical
-          feature. The second element will denote the embedding
-          dimension to be used for that feature.
+    Returns
+    -------
+    embedded_feature: pd.DataFrame. the embedded features, named like {col_name}_embedding
+    """
 
-        no_of_cont: Integer
-          The number of continuous features in the data.
+    if isinstance(embeddings, str):
+        f_embeddings = open(embeddings, "rb")
+        embeddings = pickle.load(f_embeddings)
 
-        lin_layer_sizes: List of integers.
-          The size of each linear layer. The length will be equal
-          to the total number
-          of linear layers in the network.
+    X_columns = list(X.columns)
 
-        output_size: Integer
-          The size of the final output.
+    X_embedded = []
+    for i, record in X.iterrows():
+        embedded_features = []
+        print(record)
+        for col in X_columns:
+            feat = int(record[col])
+            embedded_features += embeddings["{col_name}_embedding".format(col_name=col)][feat].tolist()
 
-        emb_dropout: Float
-          The dropout to be used after the embedding layers.
+        X_embedded.append(embedded_features)
 
-        lin_layer_dropouts: List of floats
-          The dropouts to be used after each linear layer.
-        """
+    res = np.array(X_embedded)
+    names = ["feature_{i}".format(i=i) for i in range(np.shape(res)[1])]
+    embedded_feature = pd.DataFrame(data=res, columns=names)
 
-        super().__init__()
+    return embedded_feature
 
-        # Embedding layers
-        self.emb_layers = nn.ModuleList([nn.Embedding(x, y)
-                                         for x, y in emb_dims])
 
-        no_of_embs = sum([y for x, y in emb_dims])
-        self.no_of_embs = no_of_embs
-        self.no_of_cont = no_of_cont
+def entity_embedding(df, configger):
+    """
 
-        # Linear Layers
-        first_lin_layer = nn.Linear(self.no_of_embs + self.no_of_cont,
-                                    lin_layer_sizes[0])
+    Parameters
+    ----------
+    df: pd.DataFrame, the input dataframe.
+    configger: str, the Json string of embedding setting.
+        {
+            "target_col":"${target_col}", #target_col name
+            "embedding_file_path":"${embedding_file_path}" ,# the file path of embedding file result
+            "check_point_file_path":"${check_point_file_path}", # the check point file path of embedding
+            "loss_func":"${loss_func}",# the loss function of keras model training.
+            "optimizer":"${optimizer_func}",# the optimize function of keras model training.
+            "epochs":${epochs}, # the epoch or nn training
+            "batch_size": ${batch_size}, # the batch_size or nn training
+            "embed_cols":
+                {
+                "${col_name}":{"output_dim": ${output_dim_n}}, # the output dim number of the embed column for embedding layer.The input dim number is np.unique(df[col])
+                ...
+                }
 
-        self.lin_layers = \
-            nn.ModuleList([first_lin_layer] + \
-                          [nn.Linear(lin_layer_sizes[i], lin_layer_sizes[i + 1])
-                           for i in range(len(lin_layer_sizes) - 1)])
+        }
 
-        for lin_layer in self.lin_layers:
-            nn.init.kaiming_normal_(lin_layer.weight.data)
+    Returns
+    -------
+    df_t: the result after embedding. the new features named {col_name}_embedding.
+    """
+    configger = json.loads(configger)
+    target_col_name = configger["target_col"]
+    embedding_file_path = configger["embedding_file_path"]
 
-        # Output Layer
-        self.output_layer = nn.Linear(lin_layer_sizes[-1],
-                                      output_size)
-        nn.init.kaiming_normal_(self.output_layer.weight.data)
+    y = df[target_col_name]
+    X = df.drop([target_col_name], axis=1)
 
-        # Batch Norm Layers
-        self.first_bn_layer = nn.BatchNorm1d(self.no_of_cont)
-        self.bn_layers = nn.ModuleList([nn.BatchNorm1d(size)
-                                        for size in lin_layer_sizes])
+    NN = NN_with_EntityEmbedding(X, y, configger)
+    NN.save_embeddings(embedding_file_path)
 
-        # Dropout Layers
-        self.emb_dropout_layer = nn.Dropout(emb_dropout)
-        self.droput_layers = nn.ModuleList([nn.Dropout(size)
-                                            for size in lin_layer_dropouts])
+    df_t = embedding_data(X, embedding_file_path)
+    df_t = pd.concat([df, df_t], axis=1)
 
-    def forward(self, cont_data, cat_data):
+    return df_t
 
-        if self.no_of_embs != 0:
-            x = [emb_layer(cat_data[:, i])
-                 for i, emb_layer in enumerate(self.emb_layers)]
-            x = torch.cat(x, 1)
-            x = self.emb_dropout_layer(x)
 
-        if self.no_of_cont != 0:
-            normalized_cont_data = self.first_bn_layer(cont_data)
 
-            if self.no_of_embs != 0:
-                x = torch.cat([x, normalized_cont_data], 1)
-            else:
-                x = normalized_cont_data
 
-        for lin_layer, dropout_layer, bn_layer in \
-                zip(self.lin_layers, self.droput_layers, self.bn_layers):
-            x = F.relu(lin_layer(x))
-            x = bn_layer(x)
-            x = dropout_layer(x)
-
-        x = self.output_layer(x)
-
-        return x
